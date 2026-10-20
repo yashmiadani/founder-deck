@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Founder Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe4;
+    --paper-card:#faf6ec;
+    --ink:#1c1a16;
+    --ink-soft:#5c5648;
+    --hairline:#ddd5c2;
+    --accent:#b0522e;
+    --serif:'Newsreader','Iowan Old Style',Georgia,serif;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--paper);color:var(--ink);
+    background-image:radial-gradient(120% 90% at 50% 0%, rgba(255,252,244,.9) 0%, rgba(244,239,228,0) 55%);
+    font-family:var(--serif);font-weight:400;
+    -webkit-font-smoothing:antialiased;
+    min-height:100dvh;display:flex;flex-direction:column;
+  }
+  a{color:inherit}
+  button{font-family:inherit;color:inherit}
+
+  .masthead{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:18px 22px 0;
+    font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);
+  }
+  .masthead .dot{color:var(--accent)}
+  .masthead{font-size:9.5px;letter-spacing:.22em}
+
+  main{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:18px 22px 8px;
+  }
+
+  /* ---------- the deck ---------- */
+  .card-slot{position:relative;width:min(100%,330px);aspect-ratio:5/7;perspective:1400px}
+  .ghost{position:absolute;inset:0;background:var(--paper-card);border:1px solid var(--hairline);border-radius:10px;transition:opacity .3s}
+  .ghost.g1{transform:rotate(2.2deg) translateY(6px)}
+  .ghost.g2{transform:rotate(-1.8deg) translateY(10px);opacity:.5}
+  .ghost.none{opacity:0}
+
+  .card{
+    position:absolute;inset:0;transform-style:preserve-3d;
+    transition:transform .7s cubic-bezier(.33,.9,.28,1),opacity .35s;
+    cursor:pointer;
+  }
+  .card.flipped{transform:rotateY(180deg)}
+  .card.leaving{transform:translateX(130%) rotate(9deg);opacity:0;transition:transform .45s cubic-bezier(.5,0,.8,.4),opacity .4s}
+  .card.leaving.flipped{transform:rotateY(180deg) translateX(-130%) rotate(-9deg);opacity:0}
+  .face{
+    position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+    background:var(--paper-card);border:1px solid var(--hairline);border-radius:10px;
+    box-shadow:0 1px 1px rgba(28,26,22,.04),0 2px 6px rgba(28,26,22,.05),0 24px 44px -22px rgba(28,26,22,.30);
+    padding:26px 24px;display:flex;flex-direction:column;overflow:hidden;
+  }
+  .face.back{transform:rotateY(180deg);padding:22px 22px 18px;cursor:default}
+  .face.front::after{content:"";position:absolute;inset:8px;border:1px solid var(--hairline);border-radius:5px;pointer-events:none}
+
+  .meta-row{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft)}
+  .suit-tag{color:var(--accent)}
+  .front .prompt{margin:auto 0;font-size:27px;line-height:1.28;font-weight:400;letter-spacing:-0.005em;font-variation-settings:'opsz' 44}
+  .corner-idx{
+    position:absolute;right:14px;bottom:64px;transform:rotate(180deg);
+    font-family:var(--mono);font-size:9px;letter-spacing:.16em;color:var(--hairline);
+    pointer-events:none;display:none;
+  }
+  .front .turn{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);display:flex;justify-content:space-between}
+
+  .back .body{margin-top:13px;flex:1;overflow-y:auto;scrollbar-width:thin;padding-right:12px}
+  .back .body::-webkit-scrollbar{width:4px}
+  .back .body::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:2px}
+  .back .body::-webkit-scrollbar-track{background:transparent}
+  .blk{margin-bottom:14px}
+  .blk .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:5px}
+  .blk p{font-size:13.5px;line-height:1.5;font-weight:300;color:var(--ink)}
+  .blk.quote p{font-style:italic;font-size:14px}
+  .blk.quote{padding-left:12px;border-left:1px solid var(--accent)}
+  .note textarea{
+    width:100%;min-height:52px;resize:vertical;background:transparent;border:none;
+    border-bottom:1px dashed var(--hairline);font-family:var(--serif);font-style:italic;
+    font-size:13.5px;font-weight:300;color:var(--ink);outline:none;padding:2px 0 6px;
+  }
+  .note textarea::placeholder{color:var(--ink-soft);opacity:.7}
+  .note .saved{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);opacity:0;transition:opacity .3s;margin-top:3px}
+  .note .saved.on{opacity:.8}
+  .attr{margin-top:6px;padding-top:14px;border-top:1px solid var(--hairline);font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--ink-soft);letter-spacing:.02em}
+  .attr .who{color:var(--ink);font-size:11px}
+  .attr a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--hairline)}
+
+  /* ---------- controls ---------- */
+  .controls{margin-top:34px;display:flex;align-items:center;gap:14px}
+  .arrow{
+    width:40px;height:40px;border-radius:50%;border:1px solid var(--hairline);
+    background:transparent;font-size:15px;color:var(--ink-soft);cursor:pointer;transition:border-color .2s,color .2s;
+  }
+  .arrow:hover{color:var(--ink)}
+  .pill{
+    height:40px;padding:0 22px;border-radius:999px;border:1px solid var(--hairline);
+    background:transparent;cursor:pointer;transition:border-color .2s,color .2s;
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft);
+  }
+  .pill.done{border-color:var(--accent);color:var(--accent)}
+  .arrow:hover,.pill:hover{border-color:var(--ink-soft)}
+  .pill.done:hover{border-color:var(--accent)}
+
+  /* ---------- empty deck ---------- */
+  .complete{
+    text-align:center;color:var(--ink-soft);font-weight:300;
+    display:none;flex-direction:column;align-items:center;gap:14px;
+  }
+  .complete .big{font-size:26px;color:var(--ink)}
+  .complete .sub{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
+
+  /* ---------- played pile ---------- */
+  .played-bar{
+    padding:14px 22px 18px;display:flex;justify-content:center;
+  }
+  .played-toggle{
+    background:none;border:none;cursor:pointer;
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft);
+    border-bottom:1px solid var(--hairline);padding-bottom:3px;
+  }
+  .played-toggle:hover{color:var(--ink)}
+  .drawer{
+    position:fixed;inset:0;background:rgba(28,26,22,.24);
+    display:none;align-items:flex-end;justify-content:center;z-index:20;
+  }
+  .drawer.open{display:flex}
+  .drawer-panel{
+    background:var(--paper);width:100%;max-width:520px;max-height:72dvh;
+    border-radius:16px 16px 0 0;border:1px solid var(--hairline);border-bottom:none;
+    padding:20px 22px 28px;display:flex;flex-direction:column;
+  }
+  .drawer-head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);
+    padding-bottom:14px;border-bottom:1px solid var(--hairline);
+  }
+  .drawer-head button{background:none;border:none;cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink)}
+  .drawer-list{overflow-y:auto;margin-top:6px}
+  .played-row{
+    display:flex;align-items:baseline;gap:12px;padding:12px 2px;
+    border-bottom:1px solid var(--hairline);font-size:14.5px;font-weight:300;
+  }
+  .played-row .no{font-family:var(--mono);font-size:10px;color:var(--ink-soft);letter-spacing:.1em}
+  .played-row .putback{
+    margin-left:auto;background:none;border:none;cursor:pointer;
+    font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+  }
+  .drawer-empty{padding:26px 2px;font-weight:300;color:var(--ink-soft);font-size:14.5px}
+
+  @media (min-width:920px){
+    .masthead{padding:26px 48px 0}
+    .card-slot{width:392px;aspect-ratio:5/7}
+    .played-bar{padding:18px 48px 26px}
+    .drawer{align-items:center}
+    .drawer-panel{border-radius:16px;border-bottom:1px solid var(--hairline);max-height:76dvh}
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <span><span class="dot">&#9679;</span> <span id="m-title"></span></span>
+  <span id="m-progress"></span>
+</header>
+
+<main>
+  <div class="card-slot" id="slot">
+    <div class="ghost g2" id="g2"></div>
+    <div class="ghost g1" id="g1"></div>
+    <div class="card" id="card" role="button" tabindex="0" aria-label="Turn card over">
+      <div class="face front">
+        <div class="meta-row"><span class="suit-tag" id="f-suit"></span><span id="f-no"></span></div>
+        <div class="prompt" id="f-prompt"></div>
+        <div class="turn"><span id="f-who"></span><span>Turn over &#8635;</span></div>
+        <div class="corner-idx" id="f-corner"></div>
+      </div>
+      <div class="face back">
+        <div class="meta-row"><span class="suit-tag" id="b-suit"></span><span id="b-no"></span></div>
+        <div class="body" id="b-body"></div>
+      </div>
+    </div>
+    <div class="complete" id="complete">
+      <div class="big">Deck complete.</div>
+      <div class="sub" id="complete-sub"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="arrow" id="prev" aria-label="Previous card">&#8592;</button>
+    <button class="pill" id="shuffle">Shuffle</button>
+    <button class="pill done" id="done">Done</button>
+    <button class="arrow" id="next" aria-label="Next card">&#8594;</button>
+  </div>
+</main>
+
+<div class="played-bar">
+  <button class="played-toggle" id="played-toggle"></button>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-panel">
+    <div class="drawer-head"><span id="drawer-title">Played</span><button id="drawer-close">Close</button></div>
+    <div class="drawer-list" id="drawer-list"></div>
+  </div>
+</div>
+
+<script src="content.js"></script>
+<script>
+(function(){
+  var params = new URLSearchParams(location.search);
+  var deckId = params.get('deck') || DECKS.list[0].id;
+  var deck = DECKS.list.filter(function(d){ return d.id === deckId; })[0] || DECKS.list[0];
+  var all = deck.cards.filter(function(c){ return c.status !== 'retired'; });
+
+  document.title = deck.title;
+  document.getElementById('m-title').textContent = deck.title;
+
+  /* device-local state: play order + played cards + notes */
+  var store = (function(){
+    try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return localStorage; }
+    catch(e){ var m = {}; return { getItem:function(k){ return k in m ? m[k] : null; }, setItem:function(k,v){ m[k]=v; } }; }
+  })();
+  function noteKey(c){ return 'decknote:' + deck.id + ':' + c.n; }
+  var stateKey = 'deckstate:' + deck.id;
+  var state;
+  try { state = JSON.parse(store.getItem(stateKey)) || null; } catch(e){ state = null; }
+  if (!state || !Array.isArray(state.order) || !Array.isArray(state.played) ||
+      state.order.length !== all.length) {
+    state = { order: all.map(function(_,k){ return k; }), played: [] };
+  }
+  function save(){ store.setItem(stateKey, JSON.stringify(state)); }
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function remaining(){ return state.order.filter(function(k){ return state.played.indexOf(all[k].n) === -1; }); }
+
+  var i = 0, flipped = false;
+
+  function render(){
+    var rem = remaining();
+    var done = state.played.length;
+
+    document.getElementById('m-progress').textContent = done + ' of ' + all.length + ' done';
+    document.getElementById('played-toggle').textContent = 'Played · ' + done;
+
+    var slot = document.getElementById('slot');
+    var card = document.getElementById('card');
+    var complete = document.getElementById('complete');
+
+    if (rem.length === 0) {
+      card.style.display = 'none';
+      document.getElementById('g1').className = 'ghost g1 none';
+      document.getElementById('g2').className = 'ghost g2 none';
+      complete.style.display = 'flex';
+      document.getElementById('complete-sub').textContent = all.length + ' of ' + all.length + ' played';
+      return;
+    }
+    complete.style.display = 'none';
+    card.style.display = '';
+
+    document.getElementById('g1').className = 'ghost g1' + (rem.length > 1 ? '' : ' none');
+    document.getElementById('g2').className = 'ghost g2' + (rem.length > 2 ? '' : ' none');
+
+    if (i >= rem.length) i = 0;
+    var c = all[rem[i]];
+    var suit = deck.suits[c.suit];
+    document.documentElement.style.setProperty('--accent', suit.accent);
+
+    document.getElementById('f-suit').textContent = suit.name;
+    document.getElementById('f-no').textContent = pad(c.n) + ' / 52';
+    document.getElementById('f-prompt').textContent = c.prompt;
+    document.getElementById('f-who').textContent = c.who;
+    document.getElementById('b-suit').textContent = suit.name;
+    document.getElementById('b-no').textContent = pad(c.n) + ' / 52';
+
+    var body = document.getElementById('b-body');
+    body.innerHTML =
+      '<div class="blk"><div class="lbl">The advice</div><p>' + c.advice + '</p></div>' +
+      (c.quote ? '<div class="blk quote"><p>&ldquo;' + c.quote + '&rdquo;</p></div>' : '') +
+      '<div class="blk"><div class="lbl">Why it matters</div><p>' + c.why + '</p></div>' +
+      '<div class="blk"><div class="lbl">Do this</div><p>' + c.act + '</p></div>' +
+      '<div class="blk"><div class="lbl">Think back</div><p>' + c.reflect + '</p></div>' +
+      '<div class="blk note"><div class="lbl">Your note</div>' +
+        '<textarea id="note" placeholder="What happened when you tried it&hellip;"></textarea>' +
+        '<div class="saved" id="saved">Saved on this device</div></div>' +
+      '<div class="attr"><span class="who">' + c.who + '</span> &middot; ' + c.work + '<br>' +
+      c.where + '<br><a href="' + c.link + '" target="_blank" rel="noopener">Read the original &nearr;</a></div>';
+    body.scrollTop = 0;
+
+    var ta = document.getElementById('note');
+    var saved = document.getElementById('saved');
+    ta.value = store.getItem(noteKey(c)) || '';
+    var t;
+    ta.addEventListener('input', function(){
+      store.setItem(noteKey(c), ta.value);
+      clearTimeout(t);
+      t = setTimeout(function(){ saved.classList.add('on'); }, 250);
+    });
+    ta.addEventListener('click', function(e){ e.stopPropagation(); });
+    body.querySelector('.attr a').addEventListener('click', function(e){ e.stopPropagation(); });
+  }
+
+  function show(k){
+    var rem = remaining();
+    if (!rem.length) return;
+    i = ((k % rem.length) + rem.length) % rem.length;
+    flipped = false;
+    document.getElementById('card').classList.remove('flipped');
+    render();
+  }
+
+  function shuffle(){
+    var rem = remaining();
+    for (var a = rem.length - 1; a > 0; a--) {
+      var b = Math.floor(Math.random() * (a + 1));
+      var tmp = rem[a]; rem[a] = rem[b]; rem[b] = tmp;
+    }
+    /* rebuild order: shuffled remaining first, played keep their numbers */
+    state.order = rem.map(function(k){ return k; });
+    save();
+    show(0);
+  }
+
+  function markDone(){
+    var rem = remaining();
+    if (!rem.length) return;
+    var c = all[rem[i]];
+    var card = document.getElementById('card');
+    card.classList.add('leaving');
+    setTimeout(function(){
+      state.played.push(c.n);
+      save();
+      card.classList.remove('leaving','flipped');
+      flipped = false;
+      render();
+    }, 420);
+  }
+
+  function putBack(n){
+    state.played = state.played.filter(function(x){ return x !== n; });
+    save();
+    renderDrawer();
+    render();
+  }
+
+  /* played drawer */
+  var drawer = document.getElementById('drawer');
+  function renderDrawer(){
+    document.getElementById('drawer-title').textContent = 'Played · ' + state.played.length + ' of ' + all.length;
+    var list = document.getElementById('drawer-list');
+    if (!state.played.length) {
+      list.innerHTML = '<div class="drawer-empty">Nothing played yet. Tap Done on a card and it lands here.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    state.played.forEach(function(n){
+      var c = all.filter(function(x){ return x.n === n; })[0];
+      if (!c) return;
+      var row = document.createElement('div');
+      row.className = 'played-row';
+      row.innerHTML = '<span class="no">' + pad(c.n) + '</span><span>' + c.prompt + '</span>';
+      var pb = document.createElement('button');
+      pb.className = 'putback';
+      pb.textContent = 'Put back';
+      pb.addEventListener('click', function(){ putBack(n); });
+      row.appendChild(pb);
+      list.appendChild(row);
+    });
+  }
+  document.getElementById('played-toggle').addEventListener('click', function(){
+    renderDrawer();
+    drawer.classList.add('open');
+  });
+  document.getElementById('drawer-close').addEventListener('click', function(){ drawer.classList.remove('open'); });
+  drawer.addEventListener('click', function(e){ if (e.target === drawer) drawer.classList.remove('open'); });
+
+  /* card + controls */
+  document.getElementById('card').addEventListener('click', function(e){
+    if (e.target.closest('textarea') || e.target.closest('a')) return;
+    flipped = !flipped;
+    this.classList.toggle('flipped', flipped);
+  });
+  document.getElementById('card').addEventListener('keydown', function(e){
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); this.click(); }
+  });
+  document.getElementById('prev').addEventListener('click', function(){ show(i-1); });
+  document.getElementById('next').addEventListener('click', function(){ show(i+1); });
+  document.getElementById('shuffle').addEventListener('click', shuffle);
+  document.getElementById('done').addEventListener('click', markDone);
+  document.addEventListener('keydown', function(e){
+    if (drawer.classList.contains('open')) { if (e.key === 'Escape') drawer.classList.remove('open'); return; }
+    if(e.key === 'ArrowLeft') show(i-1);
+    if(e.key === 'ArrowRight') show(i+1);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
