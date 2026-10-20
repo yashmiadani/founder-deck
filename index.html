@@ -28,6 +28,12 @@
     min-height:100dvh;display:flex;flex-direction:column;
   }
   a{color:inherit}
+  .auth-link{
+    background:none;border:none;cursor:pointer;padding:0;
+    font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--ink-soft);
+    border-bottom:1px solid var(--hairline);padding-bottom:2px;
+  }
+  .auth-link:hover{color:var(--ink)}
   button{font-family:inherit;color:inherit}
 
   .masthead{
@@ -86,12 +92,24 @@
   .blk p{font-size:13.5px;line-height:1.5;font-weight:300;color:var(--ink)}
   .blk.quote p{font-style:italic;font-size:14px}
   .blk.quote{padding-left:12px;border-left:1px solid var(--accent)}
-  .note textarea{
-    width:100%;min-height:52px;resize:vertical;background:transparent;border:none;
-    border-bottom:1px dashed var(--hairline);font-family:var(--serif);font-style:italic;
+  .note .editor{
+    width:100%;min-height:52px;background:transparent;
+    border-bottom:1px dashed var(--hairline);font-family:var(--serif);
     font-size:13.5px;font-weight:300;color:var(--ink);outline:none;padding:2px 0 6px;
+    line-height:1.5;overflow-wrap:break-word;
   }
-  .note textarea::placeholder{color:var(--ink-soft);opacity:.7}
+  .note .editor:empty::before{content:attr(data-ph);color:var(--ink-soft);opacity:.7;font-style:italic}
+  .note-tools{
+    display:none;gap:2px;margin-bottom:4px;
+    font-family:var(--mono);
+  }
+  .note-tools.on{display:flex}
+  .note-tools button{
+    width:26px;height:22px;border:1px solid var(--hairline);border-radius:4px;
+    background:var(--paper);cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--ink-soft);
+  }
+  .note-tools button:hover{color:var(--ink);border-color:var(--ink-soft)}
+  .note-tools button b,.note-tools button i,.note-tools button s{font-family:var(--serif);font-size:11px}
   .note .saved{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);opacity:0;transition:opacity .3s;margin-top:3px}
   .note .saved.on{opacity:.8}
   .attr{margin-top:6px;padding-top:14px;border-top:1px solid var(--hairline);font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--ink-soft);letter-spacing:.02em}
@@ -173,7 +191,7 @@
 
 <header class="masthead">
   <span><span class="dot">&#9679;</span> <span id="m-title"></span></span>
-  <span id="m-progress"></span>
+  <span><span id="m-progress"></span><span id="auth-wrap"> &nbsp;&middot;&nbsp; <button class="auth-link" id="auth-link">Sign in</button></span></span>
 </header>
 
 <main>
@@ -217,8 +235,17 @@
 </div>
 
 <script src="content.js"></script>
-<script>
-(function(){
+<script type="module">
+
+/* Filled in at deploy time. Sign-in stays hidden until this is real. */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDoEVfhqiolhLBetaTIPok397LsSVxnIYY",
+  authDomain: "founder-deck-7d483.firebaseapp.com",
+  projectId: "founder-deck-7d483",
+  appId: "1:846575325213:web:df2710ee15ac223d00b6f4"
+};
+
+(async function(){
   var params = new URLSearchParams(location.search);
   var deckId = params.get('deck') || DECKS.list[0].id;
   var deck = DECKS.list.filter(function(d){ return d.id === deckId; })[0] || DECKS.list[0];
@@ -227,7 +254,7 @@
   document.title = deck.title;
   document.getElementById('m-title').textContent = deck.title;
 
-  /* device-local state: play order + played cards + notes */
+  /* ---------- local store (instant cache; also the whole story when signed out) ---------- */
   var store = (function(){
     try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return localStorage; }
     catch(e){ var m = {}; return { getItem:function(k){ return k in m ? m[k] : null; }, setItem:function(k,v){ m[k]=v; } }; }
@@ -238,9 +265,88 @@
   try { state = JSON.parse(store.getItem(stateKey)) || null; } catch(e){ state = null; }
   if (!state || !Array.isArray(state.order) || !Array.isArray(state.played) ||
       state.order.length !== all.length) {
-    state = { order: all.map(function(_,k){ return k; }), played: [] };
+    state = { order: all.map(function(_,k){ return k; }), played: [], notes: {} };
   }
-  function save(){ store.setItem(stateKey, JSON.stringify(state)); }
+  if (!state.notes) state.notes = {};
+  /* migrate any older per-card notes into state */
+  all.forEach(function(c){
+    var v = store.getItem(noteKey(c));
+    if (v && !state.notes[c.n]) state.notes[c.n] = v;
+  });
+
+  /* ---------- cloud sync ---------- */
+  var cloud = { ready:false, uid:null, db:null, ref:null, timer:null };
+
+  function syncMode(){ return cloud.uid ? 'cloud' : 'local'; }
+
+  function saveLocal(){ store.setItem(stateKey, JSON.stringify(state)); }
+  function save(){
+    saveLocal();
+    if (cloud.uid && cloud.ref) {
+      clearTimeout(cloud.timer);
+      cloud.timer = setTimeout(pushCloud, 400);
+    }
+  }
+  function pushCloud(){
+    if (!cloud.ref) return;
+    setDoc(cloud.ref, {
+      order: state.order, played: state.played, notes: state.notes,
+      updatedAt: serverTimestamp()
+    }).catch(function(){ /* offline: local copy is fine, next change retries */ });
+  }
+  function adoptCloud(data){
+    if (Array.isArray(data.order) && data.order.length === all.length) state.order = data.order;
+    if (Array.isArray(data.played)) state.played = data.played;
+    if (data.notes && typeof data.notes === 'object') state.notes = data.notes;
+    saveLocal();
+    flipped = false;
+    document.getElementById('card').classList.remove('flipped');
+    render();
+  }
+
+  var authLink = document.getElementById('auth-link');
+  var auth = null;
+
+  if (FIREBASE_CONFIG.apiKey.indexOf('__') !== 0) {
+    try {
+      const [{ initializeApp }, authMod, fsMod] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
+        import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js")
+      ]);
+      const { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } = authMod;
+      const { getFirestore, doc, getDoc, setDoc, serverTimestamp } = fsMod;
+      var app = initializeApp(FIREBASE_CONFIG);
+      auth = getAuth(app);
+      cloud.db = getFirestore(app);
+
+      onAuthStateChanged(auth, function(user){
+        if (user) {
+          cloud.uid = user.uid;
+          cloud.ref = doc(cloud.db, 'users', user.uid, 'decks', deck.id);
+          authLink.textContent = (user.displayName ? user.displayName.split(' ')[0] : 'Account') + ' · Sign out';
+          getDoc(cloud.ref).then(function(snap){
+            if (snap.exists()) { adoptCloud(snap.data()); }
+            else { pushCloud(); }
+            render();
+          }).catch(function(){ render(); });
+        } else {
+          cloud.uid = null; cloud.ref = null;
+          authLink.textContent = 'Sign in';
+          render();
+        }
+      });
+
+      authLink.addEventListener('click', function(){
+        if (auth.currentUser) { signOut(auth); }
+        else { signInWithPopup(auth, new GoogleAuthProvider()).catch(function(){}); }
+      });
+    } catch(e) {
+      document.getElementById('auth-wrap').style.display = 'none';
+    }
+  } else {
+    document.getElementById('auth-wrap').style.display = 'none';
+  }
 
   function pad(n){ return String(n).padStart(2,'0'); }
   function remaining(){ return state.order.filter(function(k){ return state.played.indexOf(all[k].n) === -1; }); }
@@ -254,7 +360,6 @@
     document.getElementById('m-progress').textContent = done + ' of ' + all.length + ' done';
     document.getElementById('played-toggle').textContent = 'Played · ' + done;
 
-    var slot = document.getElementById('slot');
     var card = document.getElementById('card');
     var complete = document.getElementById('complete');
 
@@ -292,20 +397,39 @@
       '<div class="blk"><div class="lbl">Do this</div><p>' + c.act + '</p></div>' +
       '<div class="blk"><div class="lbl">Think back</div><p>' + c.reflect + '</p></div>' +
       '<div class="blk note"><div class="lbl">Your note</div>' +
-        '<textarea id="note" placeholder="What happened when you tried it&hellip;"></textarea>' +
-        '<div class="saved" id="saved">Saved on this device</div></div>' +
+        '<div class="note-tools" id="note-tools">' +
+          '<button type="button" data-cmd="bold" aria-label="Bold"><b>B</b></button>' +
+          '<button type="button" data-cmd="italic" aria-label="Italic"><i>I</i></button>' +
+          '<button type="button" data-cmd="strikeThrough" aria-label="Strikethrough"><s>S</s></button>' +
+        '</div>' +
+        '<div class="editor" id="note" contenteditable="true" data-ph="What happened when you tried it&hellip;"></div>' +
+        '<div class="saved" id="saved"></div></div>' +
       '<div class="attr"><span class="who">' + c.who + '</span> &middot; ' + c.work + '<br>' +
       c.where + '<br><a href="' + c.link + '" target="_blank" rel="noopener">Read the original &nearr;</a></div>';
     body.scrollTop = 0;
 
     var ta = document.getElementById('note');
+    var tools = document.getElementById('note-tools');
     var saved = document.getElementById('saved');
-    ta.value = store.getItem(noteKey(c)) || '';
+    ta.innerHTML = state.notes[c.n] || '';
     var t;
     ta.addEventListener('input', function(){
-      store.setItem(noteKey(c), ta.value);
+      state.notes[c.n] = ta.innerHTML;
+      save();
       clearTimeout(t);
-      t = setTimeout(function(){ saved.classList.add('on'); }, 250);
+      t = setTimeout(function(){
+        saved.textContent = syncMode() === 'cloud' ? 'Saved to your account' : 'Saved on this device';
+        saved.classList.add('on');
+      }, 250);
+    });
+    ta.addEventListener('focus', function(){ tools.classList.add('on'); });
+    ta.addEventListener('blur', function(){ setTimeout(function(){ tools.classList.remove('on'); }, 200); });
+    tools.querySelectorAll('button').forEach(function(btn){
+      btn.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        document.execCommand(btn.getAttribute('data-cmd'), false, null);
+        ta.dispatchEvent(new Event('input'));
+      });
     });
     ta.addEventListener('click', function(e){ e.stopPropagation(); });
     body.querySelector('.attr a').addEventListener('click', function(e){ e.stopPropagation(); });
@@ -326,7 +450,6 @@
       var b = Math.floor(Math.random() * (a + 1));
       var tmp = rem[a]; rem[a] = rem[b]; rem[b] = tmp;
     }
-    /* rebuild order: shuffled remaining first, played keep their numbers */
     state.order = rem.map(function(k){ return k; });
     save();
     show(0);
@@ -354,7 +477,6 @@
     render();
   }
 
-  /* played drawer */
   var drawer = document.getElementById('drawer');
   function renderDrawer(){
     document.getElementById('drawer-title').textContent = 'Played · ' + state.played.length + ' of ' + all.length;
@@ -385,9 +507,8 @@
   document.getElementById('drawer-close').addEventListener('click', function(){ drawer.classList.remove('open'); });
   drawer.addEventListener('click', function(e){ if (e.target === drawer) drawer.classList.remove('open'); });
 
-  /* card + controls */
   document.getElementById('card').addEventListener('click', function(e){
-    if (e.target.closest('textarea') || e.target.closest('a')) return;
+    if (e.target.closest('.editor') || e.target.closest('.note-tools') || e.target.closest('a')) return;
     flipped = !flipped;
     this.classList.toggle('flipped', flipped);
   });
@@ -400,6 +521,7 @@
   document.getElementById('done').addEventListener('click', markDone);
   document.addEventListener('keydown', function(e){
     if (drawer.classList.contains('open')) { if (e.key === 'Escape') drawer.classList.remove('open'); return; }
+    if (e.target.closest && e.target.closest('.editor')) return;
     if(e.key === 'ArrowLeft') show(i-1);
     if(e.key === 'ArrowRight') show(i+1);
   });
