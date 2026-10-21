@@ -99,6 +99,8 @@
     line-height:1.5;overflow-wrap:break-word;
   }
   .note .editor:empty::before{content:attr(data-ph);color:var(--ink-soft);opacity:.7;font-style:italic}
+  .note .editor.locked{cursor:pointer}
+  .note .editor.locked:empty::before{font-style:normal;opacity:.55}
   .note-tools{
     display:none;gap:2px;margin-bottom:4px;
     font-family:var(--mono);
@@ -281,7 +283,14 @@ const FIREBASE_CONFIG = {
 
   function syncMode(){ return cloud.uid ? 'cloud' : 'local'; }
 
-  function saveLocal(){ store.setItem(activeKey, JSON.stringify(state)); }
+  function saveLocal(){
+    if (activeKey === localKey) {
+      var prev = readState(localKey);
+      store.setItem(localKey, JSON.stringify({ order: state.order, played: state.played, notes: (prev && prev.notes) || {} }));
+    } else {
+      store.setItem(activeKey, JSON.stringify(state));
+    }
+  }
   function save(){
     saveLocal();
     if (cloud.uid && cloud.ref) {
@@ -333,14 +342,19 @@ const FIREBASE_CONFIG = {
           getDoc(cloud.ref).then(function(snap){
             if (snap.exists()) {
               adoptCloud(snap.data());
-              /* one-time merge: notes from the old shared bucket that never reached the account */
+              /* one-time merge: notes from the old shared/local buckets that never reached the account */
               var legacy = readState(legacyKey);
-              if (legacy && legacy.notes) {
-                var added = false;
-                Object.keys(legacy.notes).forEach(function(n){
-                  if (legacy.notes[n] && !state.notes[n]) { state.notes[n] = legacy.notes[n]; added = true; }
+              var stashed = readState(localKey);
+              var added = false;
+              [legacy, stashed].forEach(function(srcState){
+                if (srcState && srcState.notes) Object.keys(srcState.notes).forEach(function(n){
+                  if (srcState.notes[n] && !state.notes[n]) { state.notes[n] = srcState.notes[n]; added = true; }
                 });
-                if (added) { saveLocal(); pushCloud(); }
+              });
+              if (added) { saveLocal(); pushCloud(); }
+              if (stashed && stashed.notes && Object.keys(stashed.notes).length) {
+                stashed.notes = {};
+                store.setItem(localKey, JSON.stringify(stashed));
               }
             } else { pushCloud(); }
             store.removeItem(legacyKey);
@@ -434,18 +448,24 @@ const FIREBASE_CONFIG = {
     var ta = document.getElementById('note');
     var tools = document.getElementById('note-tools');
     var saved = document.getElementById('saved');
-    ta.innerHTML = state.notes[c.n] || '';
+    var signedIn = !!cloud.uid;
+    ta.contentEditable = signedIn ? 'true' : 'false';
+    ta.classList.toggle('locked', !signedIn);
+    ta.setAttribute('data-ph', signedIn ? 'What happened when you tried it\u2026' : 'Sign in to write notes');
+    if (signedIn) ta.innerHTML = state.notes[c.n] || '';
     var t;
     ta.addEventListener('input', function(){
+      if (!cloud.uid) return;
       state.notes[c.n] = ta.innerHTML;
       save();
       clearTimeout(t);
       t = setTimeout(function(){
-        saved.textContent = syncMode() === 'cloud' ? 'Saved to your account' : 'Saved on this device';
+        saved.textContent = 'Saved to your account';
         saved.classList.add('on');
       }, 250);
     });
-    ta.addEventListener('focus', function(){ tools.classList.add('on'); });
+    ta.addEventListener('click', function(){ if (!cloud.uid && auth) authLink.click(); });
+    ta.addEventListener('focus', function(){ if (cloud.uid) tools.classList.add('on'); });
     ta.addEventListener('blur', function(){ setTimeout(function(){ tools.classList.remove('on'); }, 200); });
     tools.querySelectorAll('button').forEach(function(btn){
       btn.addEventListener('mousedown', function(e){
