@@ -279,7 +279,8 @@ const FIREBASE_CONFIG = {
   var activeKey = localKey;
 
   /* ---------- cloud sync ---------- */
-  var cloud = { ready:false, uid:null, db:null, ref:null, timer:null };
+  var cloud = { ready:false, uid:null, db:null, ref:null, timer:null, retryTimer:null, onSaved:null };
+  var fsSetDoc = null, fsServerTimestamp = null; // hoisted: the const destructuring inside the try block is block-scoped and unreachable here
 
   function syncMode(){ return cloud.uid ? 'cloud' : 'local'; }
 
@@ -295,15 +296,31 @@ const FIREBASE_CONFIG = {
     saveLocal();
     if (cloud.uid && cloud.ref) {
       clearTimeout(cloud.timer);
-      cloud.timer = setTimeout(pushCloud, 400);
+      cloud.timer = setTimeout(function(){
+        pushCloud().then(function(ok){
+          if (cloud.onSaved) cloud.onSaved(ok);
+          if (!ok) retryCloud();
+        });
+      }, 400);
     }
   }
   function pushCloud(){
-    if (!cloud.ref) return;
-    setDoc(cloud.ref, {
+    if (!cloud.ref || !fsSetDoc) return Promise.resolve(false);
+    return fsSetDoc(cloud.ref, {
       order: state.order, played: state.played, notes: state.notes,
-      updatedAt: serverTimestamp()
-    }).catch(function(){ /* offline: local copy is fine, next change retries */ });
+      updatedAt: fsServerTimestamp()
+    }).then(function(){ return true; }).catch(function(){ return false; });
+  }
+  function retryCloud(){
+    if (cloud.retryTimer) return;
+    cloud.retryTimer = setTimeout(function(){
+      cloud.retryTimer = null;
+      if (!cloud.ref) return;
+      pushCloud().then(function(ok){
+        if (ok) { var s = document.getElementById('saved'); if (s && cloud.uid) s.textContent = 'Saved to your account'; }
+        else retryCloud();
+      });
+    }, 4000);
   }
   function adoptCloud(data){
     if (Array.isArray(data.order) && data.order.length === all.length) state.order = data.order;
@@ -327,6 +344,7 @@ const FIREBASE_CONFIG = {
       ]);
       const { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } = authMod;
       const { getFirestore, doc, getDoc, setDoc, serverTimestamp } = fsMod;
+      fsSetDoc = setDoc; fsServerTimestamp = serverTimestamp;
       var app = initializeApp(FIREBASE_CONFIG);
       auth = getAuth(app);
       cloud.db = getFirestore(app);
@@ -339,6 +357,7 @@ const FIREBASE_CONFIG = {
           authLink.textContent = (user.displayName ? user.displayName.split(' ')[0] : 'Account') + ' · Sign out';
           var cached = readState(cloudKey);
           if (cached) { state = cached; render(); }
+          var loadCloud = function(attempt){
           getDoc(cloud.ref).then(function(snap){
             if (snap.exists()) {
               adoptCloud(snap.data());
@@ -359,7 +378,9 @@ const FIREBASE_CONFIG = {
             } else { pushCloud(); }
             store.removeItem(legacyKey);
             render();
-          }).catch(function(){ render(); });
+          }).catch(function(){ if (attempt < 2) { setTimeout(function(){ loadCloud(attempt + 1); }, 1500); } else { render(); } });
+          };
+          loadCloud(1);
         } else {
           cloud.uid = null; cloud.ref = null;
           /* signed out: no account data on screen or on disk */
@@ -375,7 +396,12 @@ const FIREBASE_CONFIG = {
       });
 
       authLink.addEventListener('click', function(){
-        if (auth.currentUser) { signOut(auth); }
+        if (auth.currentUser) {
+          authLink.textContent = 'Signing out\u2026';
+          var done = function(){ signOut(auth); };
+          clearTimeout(cloud.timer);
+          Promise.race([pushCloud(), new Promise(function(r){ setTimeout(r, 3000); })]).then(done, done);
+        }
         else { signInWithPopup(auth, new GoogleAuthProvider()).catch(function(){}); }
       });
     } catch(e) {
@@ -384,6 +410,8 @@ const FIREBASE_CONFIG = {
   } else {
     document.getElementById('auth-wrap').style.display = 'none';
   }
+
+  window.addEventListener('pagehide', function(){ if (cloud.uid && cloud.ref) { clearTimeout(cloud.timer); pushCloud(); } });
 
   function pad(n){ return String(n).padStart(2,'0'); }
   function remaining(){ return state.order.filter(function(k){ return state.played.indexOf(all[k].n) === -1; }); }
@@ -453,16 +481,16 @@ const FIREBASE_CONFIG = {
     ta.classList.toggle('locked', !signedIn);
     ta.setAttribute('data-ph', signedIn ? 'What happened when you tried it\u2026' : 'Sign in to write notes');
     if (signedIn) ta.innerHTML = state.notes[c.n] || '';
-    var t;
     ta.addEventListener('input', function(){
       if (!cloud.uid) return;
       state.notes[c.n] = ta.innerHTML;
-      save();
-      clearTimeout(t);
-      t = setTimeout(function(){
-        saved.textContent = 'Saved to your account';
+      saved.textContent = 'Saving\u2026';
+      saved.classList.add('on');
+      cloud.onSaved = function(ok){
+        saved.textContent = ok ? 'Saved to your account' : 'Not saved - will retry';
         saved.classList.add('on');
-      }, 250);
+      };
+      save();
     });
     ta.addEventListener('click', function(){ if (!cloud.uid && auth) authLink.click(); });
     ta.addEventListener('focus', function(){ if (cloud.uid) tools.classList.add('on'); });
