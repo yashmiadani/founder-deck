@@ -20,8 +20,11 @@ Everything is in `content.js`. One file, one edit point.
 - A card is one object. `status: "active"` shows it; `status: "retired"`
   hides it from the deck but keeps it in the file for a future archive view.
 - Card numbers (`n`) are stable forever, even after retirement.
-- Notes written on a card ("Your note") stay on the reader's own device
-  (localStorage), keyed by deck id + card number. Nothing leaves the deck.
+- Notes ("Your note") require sign-in with Google. They save to the
+  reader's own private Firebase document (per-user rules; nobody else can
+  read them) and sync across devices. Signed out, the note field is locked
+  and shows a quiet "Sign in to write notes" prompt. Card progress
+  (done/shuffle) still works signed out and stays on the device.
 
 ## Suits (Deck 1)
 
