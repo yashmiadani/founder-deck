@@ -259,7 +259,7 @@ const FIREBASE_CONFIG = {
   /* ---------- local store (instant cache; also the whole story when signed out) ---------- */
   var store = (function(){
     try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return localStorage; }
-    catch(e){ var m = {}; return { getItem:function(k){ return k in m ? m[k] : null; }, setItem:function(k,v){ m[k]=v; } }; }
+    catch(e){ var m = {}; return { getItem:function(k){ return k in m ? m[k] : null; }, setItem:function(k,v){ m[k]=v; }, removeItem:function(k){ delete m[k]; } }; }
   })();
   function noteKey(c){ return 'decknote:' + deck.id + ':' + c.n; }
   /* two buckets: local (signed-out work) and cloud (cache of account data).
@@ -285,12 +285,14 @@ const FIREBASE_CONFIG = {
   function syncMode(){ return cloud.uid ? 'cloud' : 'local'; }
 
   function saveLocal(){
-    if (activeKey === localKey) {
-      var prev = readState(localKey);
-      store.setItem(localKey, JSON.stringify({ order: state.order, played: state.played, notes: (prev && prev.notes) || {} }));
-    } else {
-      store.setItem(activeKey, JSON.stringify(state));
-    }
+    try {
+      if (activeKey === localKey) {
+        var prev = readState(localKey);
+        store.setItem(localKey, JSON.stringify({ order: state.order, played: state.played, notes: (prev && prev.notes) || {} }));
+      } else {
+        store.setItem(activeKey, JSON.stringify(state));
+      }
+    } catch(e){}
   }
   function save(){
     saveLocal();
@@ -376,7 +378,7 @@ const FIREBASE_CONFIG = {
                 store.setItem(localKey, JSON.stringify(stashed));
               }
             } else { pushCloud(); }
-            store.removeItem(legacyKey);
+            try { store.removeItem(legacyKey); } catch(e){}
             render();
           }).catch(function(){ if (attempt < 2) { setTimeout(function(){ loadCloud(attempt + 1); }, 1500); } else { render(); } });
           };
@@ -384,8 +386,7 @@ const FIREBASE_CONFIG = {
         } else {
           cloud.uid = null; cloud.ref = null;
           /* signed out: no account data on screen or on disk */
-          store.removeItem(cloudKey);
-          store.removeItem(legacyKey);
+          try { store.removeItem(cloudKey); store.removeItem(legacyKey); } catch(e){}
           state = readState(localKey) || blankState();
           activeKey = localKey;
           authLink.textContent = 'Sign in';
