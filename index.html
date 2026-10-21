@@ -260,26 +260,28 @@ const FIREBASE_CONFIG = {
     catch(e){ var m = {}; return { getItem:function(k){ return k in m ? m[k] : null; }, setItem:function(k,v){ m[k]=v; } }; }
   })();
   function noteKey(c){ return 'decknote:' + deck.id + ':' + c.n; }
-  var stateKey = 'deckstate:' + deck.id;
-  var state;
-  try { state = JSON.parse(store.getItem(stateKey)) || null; } catch(e){ state = null; }
-  if (!state || !Array.isArray(state.order) || !Array.isArray(state.played) ||
-      state.order.length !== all.length) {
-    state = { order: all.map(function(_,k){ return k; }), played: [], notes: {} };
+  /* two buckets: local (signed-out work) and cloud (cache of account data).
+     Account data is never shown signed out, and is wiped from this device on sign-out. */
+  var localKey = 'deckstate:' + deck.id + ':local';
+  var cloudKey = 'deckstate:' + deck.id + ':cloud';
+  var legacyKey = 'deckstate:' + deck.id;
+  function blankState(){ return { order: all.map(function(_,k){ return k; }), played: [], notes: {} }; }
+  function readState(key){
+    var s = null;
+    try { s = JSON.parse(store.getItem(key)); } catch(e) { s = null; }
+    if (!s || !Array.isArray(s.order) || !Array.isArray(s.played) || s.order.length !== all.length) return null;
+    if (!s.notes || typeof s.notes !== 'object') s.notes = {};
+    return s;
   }
-  if (!state.notes) state.notes = {};
-  /* migrate any older per-card notes into state */
-  all.forEach(function(c){
-    var v = store.getItem(noteKey(c));
-    if (v && !state.notes[c.n]) state.notes[c.n] = v;
-  });
+  var state = readState(localKey) || blankState();
+  var activeKey = localKey;
 
   /* ---------- cloud sync ---------- */
   var cloud = { ready:false, uid:null, db:null, ref:null, timer:null };
 
   function syncMode(){ return cloud.uid ? 'cloud' : 'local'; }
 
-  function saveLocal(){ store.setItem(stateKey, JSON.stringify(state)); }
+  function saveLocal(){ store.setItem(activeKey, JSON.stringify(state)); }
   function save(){
     saveLocal();
     if (cloud.uid && cloud.ref) {
@@ -324,15 +326,36 @@ const FIREBASE_CONFIG = {
         if (user) {
           cloud.uid = user.uid;
           cloud.ref = doc(cloud.db, 'users', user.uid, 'decks', deck.id);
+          activeKey = cloudKey;
           authLink.textContent = (user.displayName ? user.displayName.split(' ')[0] : 'Account') + ' · Sign out';
+          var cached = readState(cloudKey);
+          if (cached) { state = cached; render(); }
           getDoc(cloud.ref).then(function(snap){
-            if (snap.exists()) { adoptCloud(snap.data()); }
-            else { pushCloud(); }
+            if (snap.exists()) {
+              adoptCloud(snap.data());
+              /* one-time merge: notes from the old shared bucket that never reached the account */
+              var legacy = readState(legacyKey);
+              if (legacy && legacy.notes) {
+                var added = false;
+                Object.keys(legacy.notes).forEach(function(n){
+                  if (legacy.notes[n] && !state.notes[n]) { state.notes[n] = legacy.notes[n]; added = true; }
+                });
+                if (added) { saveLocal(); pushCloud(); }
+              }
+            } else { pushCloud(); }
+            store.removeItem(legacyKey);
             render();
           }).catch(function(){ render(); });
         } else {
           cloud.uid = null; cloud.ref = null;
+          /* signed out: no account data on screen or on disk */
+          store.removeItem(cloudKey);
+          store.removeItem(legacyKey);
+          state = readState(localKey) || blankState();
+          activeKey = localKey;
           authLink.textContent = 'Sign in';
+          flipped = false;
+          document.getElementById('card').classList.remove('flipped');
           render();
         }
       });
@@ -513,15 +536,20 @@ const FIREBASE_CONFIG = {
     this.classList.toggle('flipped', flipped);
   });
   document.getElementById('card').addEventListener('keydown', function(e){
+    if (isEditing(e)) return;
     if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); this.click(); }
   });
   document.getElementById('prev').addEventListener('click', function(){ show(i-1); });
   document.getElementById('next').addEventListener('click', function(){ show(i+1); });
   document.getElementById('shuffle').addEventListener('click', shuffle);
   document.getElementById('done').addEventListener('click', markDone);
+  function isEditing(e){
+    var t = e.target;
+    return !!(t && t.closest && t.closest('.editor, [contenteditable="true"], input, textarea, select'));
+  }
   document.addEventListener('keydown', function(e){
     if (drawer.classList.contains('open')) { if (e.key === 'Escape') drawer.classList.remove('open'); return; }
-    if (e.target.closest && e.target.closest('.editor')) return;
+    if (isEditing(e)) return;
     if(e.key === 'ArrowLeft') show(i-1);
     if(e.key === 'ArrowRight') show(i+1);
   });
